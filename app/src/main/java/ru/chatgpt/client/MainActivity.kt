@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -40,11 +44,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val page = Color(0xFF212121)
-private val panel = Color(0xFF2F2F2F)
-private val textMain = Color(0xFFECECEC)
-private val muted = Color(0xFFB4B4B4)
-private val green = Color(0xFF10A37F)
+private val page = Color(0xFF090A0D)
+private val panel = Color(0xFF191B20)
+private val textMain = Color(0xFFE8E5DF)
+private val muted = Color(0xFF9B9BA1)
+private val green = Color(0xFFB8B3A8)
+private val runeRed = Color(0xFF8F2929)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +64,7 @@ fun ChatScreen() {
     var endpoint by remember { mutableStateOf("https://api.openai.com/v1/chat/completions") }
     var model by remember { mutableStateOf("gpt-4o-mini") }
     var settingsOpen by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -74,12 +80,12 @@ fun ChatScreen() {
                 TopAppBar(
                     title = {
                         Column {
-                            Text("ChatGPT", fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
-                            Text("ИИ-помощник", color = muted, fontSize = 11.sp)
+                            Text("ChatGPT ВЕЛЕС", fontWeight = FontWeight.SemiBold, fontSize = 19.sp, color = textMain)
+                            Text("Славянский ИИ-помощник", color = muted, fontSize = 11.sp)
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = { messages.clear(); messages.add(ChatMessage("assistant", "Новый чат. Чем могу помочь?")) }) {
+                        IconButton(onClick = { menuOpen = true }) {
                             Icon(Icons.Default.Menu, "Меню", tint = textMain)
                         }
                     },
@@ -140,7 +146,7 @@ fun ChatScreen() {
                         }
                     }
                     Text(
-                        "ChatGPT Russia — неофициальное приложение. Ответы ИИ требуют подключения API.",
+                        "ВЕЛЕС · Неофициальный клиент. Для ответов требуется API.",
                         color = muted, fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp)
                     )
                 }
@@ -161,7 +167,7 @@ fun ChatScreen() {
                         ) {
                             if (!user) {
                                 Box(Modifier.size(30.dp).background(green, CircleShape), contentAlignment = Alignment.Center) {
-                                    Text("✳", color = Color.White, fontSize = 17.sp)
+                                    Text("ᛉ", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Spacer(Modifier.width(10.dp))
                             }
@@ -179,6 +185,49 @@ fun ChatScreen() {
                 }
                 LaunchedEffect(messages.size, busy) {
                     if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+                }
+            }
+        }
+
+        if (menuOpen) {
+            Dialog(
+                onDismissRequest = { menuOpen = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(0.88f),
+                    color = Color(0xE916171B),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color(0xFF77736B))
+                ) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(42.dp).background(Color(0xFF292A2E), CircleShape), contentAlignment = Alignment.Center) {
+                                Text("ᛉ", color = runeRed, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("ВЕЛЕС", color = textMain, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text("Путь мудрости и знаний", color = muted, fontSize = 11.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        listOf("✧   Новый чат", "◷   История диалогов", "⚙   Настройки", "ᛉ   Славянская тема", "ⓘ   О приложении").forEachIndexed { index, label ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable {
+                                    menuOpen = false
+                                    when (index) {
+                                        0 -> { messages.clear(); messages.add(ChatMessage("assistant", "Новый чат. Чем могу помочь?")) }
+                                        2 -> settingsOpen = true
+                                        4 -> error = "ChatGPT ВЕЛЕС — независимый клиент для Android."
+                                    }
+                                }.padding(vertical = 14.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) { Text(label, color = textMain, fontSize = 16.sp) }
+                            if (index != 4) HorizontalDivider(color = Color(0x447C7770))
+                        }
+                        Text("ТЁМНОЕ СТЕКЛО  ·  СЛАВЯНСКИЙ СТИЛЬ", color = muted, fontSize = 9.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp))
+                    }
                 }
             }
         }
