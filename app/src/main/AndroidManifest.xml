@@ -4,6 +4,7 @@
     <application
         android:allowBackup="false"
         android:label="ChatGPT ВЕЛЕС"
+        android:icon="@drawable/ic_velez"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
