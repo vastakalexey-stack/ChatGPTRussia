@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +37,34 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class ChatMessage(val role: String, val text: String)
+
+private fun encodeMessages(messages: List<ChatMessage>): String {
+    val array = JSONArray()
+    messages.forEach { array.put(JSONObject().put("role", it.role).put("text", it.text)) }
+    return array.toString()
+}
+private fun decodeMessages(raw: String?): List<ChatMessage> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return try {
+        val array = JSONArray(raw)
+        (0 until array.length()).map { i ->
+            val item = array.getJSONObject(i)
+            ChatMessage(item.getString("role"), item.getString("text"))
+        }
+    } catch (_: Exception) { emptyList() }
+}
+private fun archiveCurrentChat(prefs: android.content.SharedPreferences, messages: List<ChatMessage>) {
+    if (messages.none { it.role == "user" }) return
+    val archived = try {
+        val raw = prefs.getString("archive", null)
+        if (raw.isNullOrBlank()) JSONArray() else JSONArray(raw)
+    } catch (_: Exception) { JSONArray() }
+    archived.put(JSONArray(encodeMessages(messages)))
+    val trimmed = JSONArray()
+    val start = (archived.length() - 30).coerceAtLeast(0)
+    for (i in start until archived.length()) trimmed.put(archived.getJSONArray(i))
+    prefs.edit().putString("archive", trimmed.toString()).apply()
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,21 +83,30 @@ private val runeRed = Color(0xFF8F2929)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("veles_settings", android.content.Context.MODE_PRIVATE) }
     val messages = remember {
-        mutableStateListOf(
-            ChatMessage("assistant", "Привет! Я ваш ИИ-помощник. Напишите сообщение, чтобы начать.\n\nДля настоящих ответов подключите API в настройках.")
-        )
+        mutableStateListOf<ChatMessage>().apply {
+            addAll(decodeMessages(prefs.getString("messages", null)))
+            if (isEmpty()) add(ChatMessage("assistant", "Привет! Я ChatGPT. Рад общаться с тобой. Чем займёмся?"))
+        }
     }
     var input by remember { mutableStateOf("") }
-    var apiKey by remember { mutableStateOf("") }
-    var endpoint by remember { mutableStateOf("https://api.openai.com/v1/chat/completions") }
-    var model by remember { mutableStateOf("gpt-4o-mini") }
+    var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
+    var endpoint by remember { mutableStateOf(prefs.getString("endpoint", "https://api.openai.com/v1/chat/completions") ?: "https://api.openai.com/v1/chat/completions") }
+    var model by remember { mutableStateOf(prefs.getString("model", "gpt-4o-mini") ?: "gpt-4o-mini") }
     var settingsOpen by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var historyOpen by remember { mutableStateOf(false) }
+    var historyOpen by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    LaunchedEffect(messages.size) {
+        prefs.edit().putString("messages", encodeMessages(messages.toList())).apply()
+    }
 
     MaterialTheme(colorScheme = darkColorScheme(
         background = page, surface = panel, primary = green,
@@ -90,7 +128,7 @@ fun ChatScreen() {
                         }
                     },
                     actions = {
-                        IconButton(onClick = { messages.clear(); messages.add(ChatMessage("assistant", "Новый чат. Чем могу помочь?")) }) {
+                        IconButton(onClick = { archiveCurrentChat(prefs, messages.toList()); messages.clear(); messages.add(ChatMessage("assistant", "Новый чат. Чем могу помочь?")) }) {
                             Icon(Icons.Default.Add, "Новый чат", tint = textMain)
                         }
                         IconButton(onClick = { settingsOpen = true }) {
@@ -217,7 +255,8 @@ fun ChatScreen() {
                                 Modifier.fillMaxWidth().clickable {
                                     menuOpen = false
                                     when (index) {
-                                        0 -> { messages.clear(); messages.add(ChatMessage("assistant", "Новый чат. Чем могу помочь?")) }
+                                        0 -> { archiveCurrentChat(prefs, messages.toList()); messages.clear(); messages.add(ChatMessage("assistant", "Новый чат. Чем могу помочь?")) }
+                                        1 -> historyOpen = true
                                         2 -> settingsOpen = true
                                         4 -> error = "ChatGPT ВЕЛЕС — независимый клиент для Android."
                                     }
@@ -232,6 +271,30 @@ fun ChatScreen() {
             }
         }
 
+
+        if (historyOpen) {
+            AlertDialog(
+                onDismissRequest = { historyOpen = false }, containerColor = panel,
+                title = { Text("История диалогов", color = textMain) },
+                text = {
+                    val archive = remember(historyOpen) {
+                        try { prefs.getString("archive", null)?.let { JSONArray(it) } ?: JSONArray() }
+                        catch (_: Exception) { JSONArray() }
+                    }
+                    if (archive.length() == 0) Text("Сохранённых предыдущих диалогов пока нет.", color = muted)
+                    else Column {
+                        for (i in archive.length() - 1 downTo 0) {
+                            val saved = decodeMessages(archive.getJSONArray(i).toString())
+                            TextButton(onClick = { messages.clear(); messages.addAll(saved); historyOpen = false }) {
+                                Text("Диалог ${i + 1} · ${saved.count { it.role == "user" }} сообщений", color = textMain)
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { historyOpen = false }) { Text("Закрыть") } }
+            )
+        }
+
         if (settingsOpen) {
             AlertDialog(
                 onDismissRequest = { settingsOpen = false },
@@ -239,14 +302,14 @@ fun ChatScreen() {
                 title = { Text("Подключение API") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Ключ хранится только в памяти приложения и исчезнет после его закрытия.", color = muted, fontSize = 12.sp)
+                        Text("Настройки сохраняются на этом устройстве. Не передавай API-ключ другим людям.", color = muted, fontSize = 12.sp)
                         OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("OpenAI API key") }, singleLine = true)
                         OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, label = { Text("URL API") }, singleLine = true)
                         OutlinedTextField(value = model, onValueChange = { model = it }, label = { Text("Модель") }, singleLine = true)
                     }
                 },
-                confirmButton = { TextButton(onClick = { settingsOpen = false }) { Text("Готово") } },
-                dismissButton = { TextButton(onClick = { apiKey = ""; settingsOpen = false }) { Text("Очистить ключ") } }
+                confirmButton = { TextButton(onClick = { prefs.edit().putString("api_key", apiKey.trim()).putString("endpoint", endpoint.trim()).putString("model", model.trim()).apply(); settingsOpen = false }) { Text("Сохранить") } },
+                dismissButton = { TextButton(onClick = { apiKey = ""; prefs.edit().remove("api_key").apply(); settingsOpen = false }) { Text("Удалить ключ") } }
             )
         }
     }
